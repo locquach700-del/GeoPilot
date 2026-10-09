@@ -1,0 +1,55 @@
+{
+  "geode": "v5.10.1",
+  "gd": {
+    "win": "2.2081",
+    "mac": "2.2081",
+    "android": "2.2081",
+    "ios": "2.2081"
+  },
+  "id": "noob.geopilot",
+  "name": "GeoPilot Auto Play",
+  "version": "v0.1.0",
+  "developer": "Noob",
+  "description": "Experimental obstacle-aware auto-play controller with configurable in-game settings.",
+  "repository": "https://github.com/geode-sdk/geode",
+  "tags": ["gameplay", "offline", "utility"],
+  "settings": {
+    "controller-title": {
+      "type": "title",
+      "name": "GeoPilot Controller",
+      "description": "Configure the experimental automatic controller. Open this mod's settings from the Geode menu."
+    },
+    "auto-play": {
+      "type": "bool",
+      "name": "Enable Auto Play",
+      "description": "Automatically react to recognized hazards during a level. Disabled by default.",
+      "default": false
+    },
+    "control-mode": {
+      "type": "string",
+      "name": "Game Mode",
+      "description": "Auto reads the current player mode. Manual values override mode detection.",
+      "default": "Auto",
+      "one-of": ["Auto", "Cube", "Ship", "Ball", "UFO", "Wave", "Robot", "Spider", "Swing"]
+    },
+    "reaction-distance": {
+      "type": "int",
+      "name": "Reaction Distance",
+      "description": "Horizontal distance in game units for the hazard heuristic. Larger values react earlier.",
+      "default": 85,
+      "min": 35,
+      "max": 180,
+      "control": {
+        "slider": true,
+        "input": true,
+        "slider-step": 5
+      }
+    },
+    "show-debug-log": {
+      "type": "bool",
+      "name": "Debug Log",
+      "description": "Log controller decisions to the Geode log.",
+      "default": false
+    }
+  }
+}
