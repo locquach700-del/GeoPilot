@@ -1,0 +1,48 @@
+{
+	"geode": "v5.11.1",
+	"gd": {
+		"win": "2.2081",
+		"android": "2.2081",
+		"mac": "2.2081",
+		"ios": "2.2081"
+	},
+	"id": "vnuser.detail-boost",
+	"name": "Detail Boost",
+	"version": "v1.0.0",
+	"developer": "VNUser",
+	"description": "Cuts lag in heavy, effect-filled levels without removing any object.",
+	"settings": {
+		"reduce-particles": {
+			"type": "bool",
+			"name": "Reduce particles",
+			"description": "Caps how many particles big particle effects can spawn. Blocks, saws, decorations and triggers are NOT touched.",
+			"default": true
+		},
+		"particle-percent": {
+			"type": "int",
+			"name": "Particle amount (%)",
+			"description": "How many particles big effects may keep. 100 = vanilla, 0 = no new particles from big effects.",
+			"default": 35,
+			"min": 0,
+			"max": 100,
+			"control": {
+				"slider": true,
+				"slider-step": 5,
+				"arrows": true,
+				"arrow-step": 5
+			}
+		},
+		"only-in-level": {
+			"type": "bool",
+			"name": "Only inside levels",
+			"description": "Leave menu / icon-kit particles alone and only reduce them while playing a level.",
+			"default": true
+		},
+		"disable-shake": {
+			"type": "bool",
+			"name": "Disable camera shake",
+			"description": "Ignores shake triggers. Saves a little work and keeps frame times steadier.",
+			"default": true
+		}
+	}
+}
