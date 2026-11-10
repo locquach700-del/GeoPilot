@@ -1,5 +1,5 @@
 {
-  "geode": "v5.11.2",
+  "geode": "5.11.2",
   "gd": {
     "win": "2.2081"
   },
@@ -8,7 +8,11 @@
   "version": "v1.0.0",
   "developer": "GIGA",
   "description": "Experimental object-aware auto-play mod for Geometry Dash 2.2081. Practice/offline use.",
-  "tags": ["gameplay", "offline", "utility"],
+  "tags": [
+    "gameplay",
+    "offline",
+    "utility"
+  ],
   "settings": {
     "controller-title": {
       "type": "title",
@@ -26,7 +30,17 @@
       "name": "Game Mode",
       "description": "Auto detects the current player mode. Manual values override mode detection.",
       "default": "Auto",
-      "one-of": ["Auto", "Cube", "Ship", "Ball", "UFO", "Wave", "Robot", "Spider", "Swing"]
+      "one-of": [
+        "Auto",
+        "Cube",
+        "Ship",
+        "Ball",
+        "UFO",
+        "Wave",
+        "Robot",
+        "Spider",
+        "Swing"
+      ]
     },
     "reaction-distance": {
       "type": "int",
