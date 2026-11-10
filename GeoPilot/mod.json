@@ -1,47 +1,37 @@
 {
   "geode": "5.11.2",
-  "gd": {
-    "win": "2.2081"
-  },
+  "gd": { "win": "2.2081" },
   "id": "giga.dash.bot",
   "name": "GIGA DASH BOT",
-  "version": "v1.1.0",
+  "version": "v1.2.0",
   "developer": "GIGA",
-  "description": "Predictive object-aware auto-play prototype for Geometry Dash 2.2081.",
-  "tags": [
-    "gameplay",
-    "offline",
-    "utility"
-  ],
+  "description": "Floor-filtered predictive object-aware controller for Geometry Dash 2.2081.",
+  "tags": ["gameplay", "offline", "utility"],
   "settings": {
     "controller-title": {
       "type": "title",
-      "name": "GIGA DASH BOT v1.1",
-      "description": "Reads native collision objects and predicts the player's path. Practice mode recommended."
+      "name": "GIGA DASH BOT v1.2",
+      "description": "Floor filtering, longer prediction and spike-cluster protection. Practice mode recommended."
     },
     "auto-play": {
       "type": "bool",
       "name": "Enable Auto Play",
-      "description": "Automatically react to native hitbox objects. Disabled by default.",
+      "description": "Automatically react to recognized hitbox objects. Disabled by default.",
       "default": false
     },
     "jump-lead-ms": {
       "type": "int",
-      "name": "Jump timing (ms)",
-      "description": "Lead time before predicted contact. Lower values jump later. Default is 95 ms.",
-      "default": 95,
-      "min": 45,
-      "max": 180,
-      "control": {
-        "slider": true,
-        "input": true,
-        "slider-step": 5
-      }
+      "name": "Jump lead (ms)",
+      "description": "Predictive lead time before contact. Start at 230 ms; lower to jump later.",
+      "default": 230,
+      "min": 100,
+      "max": 450,
+      "control": { "slider": true, "input": true, "slider-step": 10 }
     },
     "show-debug-log": {
       "type": "bool",
       "name": "Debug Log",
-      "description": "Logs detected object type, distance, time-to-contact and action.",
+      "description": "Logs current mode, object ID, hitbox gap, time-to-contact and action.",
       "default": false
     }
   }

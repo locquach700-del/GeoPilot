@@ -1,13 +1,11 @@
-// GIGA DASH BOT v1.1 — Geometry Dash 2.2081 / Geode 5.11.2
-// Lightweight predictive controller. Runs in PlayLayer::postUpdate (game-frame cadence).
-// It uses native object types and collision rectangles, not screen-pixel guesses.
+// GIGA DASH BOT v1.2 — Geometry Dash 2.2081 / Geode 5.11.2
+// Predictive native-object controller. Experimental heuristic, not a perfect solver.
 
 #include <Geode/Geode.hpp>
 #include <Geode/modify/PlayLayer.hpp>
 #include <Geode/binding/PlayerObject.hpp>
 #include <Geode/binding/GameObject.hpp>
 #include <Geode/utils/cocos.hpp>
-
 #include <algorithm>
 #include <cmath>
 #include <string>
@@ -15,273 +13,288 @@
 using namespace geode::prelude;
 
 namespace {
-    constexpr float kMinClosingSpeed = 35.f;
-    constexpr float kDefaultLeadSeconds = 0.095f;
-    constexpr float kTapCooldown = 0.11f;
-    constexpr float kRectSafety = 2.0f;
-    constexpr float kDirectionalLookAhead = 0.42f;
+    constexpr float kMinSpeed = 35.f;
+    constexpr float kTapCooldown = 0.16f;
+    constexpr float kMaxLookAhead = 0.72f;
+    constexpr float kDirectionalLookAhead = 0.48f;
+    constexpr float kGroundTolerance = 3.5f;
+    constexpr float kHazardCluster = 34.f;
 
-    struct Candidate {
+    enum class Mode { Cube, Ship, Ball, UFO, Wave, Robot, Spider, Swing };
+
+    struct Target {
         GameObject* object = nullptr;
         cocos2d::CCRect rect{};
-        float gap = 0.f;
-        float timeToContact = 999.f;
-        float predictedPlayerY = 0.f;
-        bool projectedCollision = false;
+        float gap = 999999.f;
+        float ttc = 999999.f;
+        float predictedY = 0.f;
     };
 
-    enum class PlayerMode {
-        Cube, Ship, Ball, UFO, Wave, Robot, Spider, Swing
-    };
-
-    PlayerMode detectMode(PlayerObject* p) {
-        if (p->m_isShip) return PlayerMode::Ship;
-        if (p->m_isBall) return PlayerMode::Ball;
-        if (p->m_isBird) return PlayerMode::UFO;
-        if (p->m_isDart) return PlayerMode::Wave;
-        if (p->m_isRobot) return PlayerMode::Robot;
-        if (p->m_isSpider) return PlayerMode::Spider;
-        if (p->m_isSwing) return PlayerMode::Swing;
-        return PlayerMode::Cube;
+    Mode detectMode(PlayerObject* p) {
+        if (p->m_isShip) return Mode::Ship;
+        if (p->m_isBall) return Mode::Ball;
+        if (p->m_isBird) return Mode::UFO;
+        if (p->m_isDart) return Mode::Wave;
+        if (p->m_isRobot) return Mode::Robot;
+        if (p->m_isSpider) return Mode::Spider;
+        if (p->m_isSwing) return Mode::Swing;
+        return Mode::Cube;
     }
 
-    const char* modeName(PlayerMode mode, bool platformer) {
+    const char* modeName(Mode m, bool platformer) {
         if (platformer) return "Platformer";
-        switch (mode) {
-            case PlayerMode::Cube: return "Cube";
-            case PlayerMode::Ship: return "Ship";
-            case PlayerMode::Ball: return "Ball";
-            case PlayerMode::UFO: return "UFO";
-            case PlayerMode::Wave: return "Wave";
-            case PlayerMode::Robot: return "Robot";
-            case PlayerMode::Spider: return "Spider";
-            case PlayerMode::Swing: return "Swing";
+        switch (m) {
+            case Mode::Cube: return "Cube";
+            case Mode::Ship: return "Ship";
+            case Mode::Ball: return "Ball";
+            case Mode::UFO: return "UFO";
+            case Mode::Wave: return "Wave";
+            case Mode::Robot: return "Robot";
+            case Mode::Spider: return "Spider";
+            case Mode::Swing: return "Swing";
         }
         return "Unknown";
     }
 
-    bool isDirectionalMode(PlayerMode mode) {
-        return mode == PlayerMode::Ship || mode == PlayerMode::Wave || mode == PlayerMode::Swing;
+    bool directionalMode(Mode m) {
+        return m == Mode::Ship || m == Mode::Wave || m == Mode::Swing;
     }
 
-    // Geode exposes object roles. This excludes decorative spikes, fake spikes,
-    // non-hazard text/props, portals and jump pads that the old ID list misread.
-    bool isCollisionObject(GameObject* object) {
-        if (!object) return false;
-        const auto type = object->m_objectType;
-        return type == GameObjectType::Hazard
-            || type == GameObjectType::AnimatedHazard
-            || type == GameObjectType::Solid;
+    bool hazardObject(GameObject* o) {
+        return o && (o->m_objectType == GameObjectType::Hazard
+            || o->m_objectType == GameObjectType::AnimatedHazard);
     }
 
-    bool verticalOverlap(const cocos2d::CCRect& a, const cocos2d::CCRect& b, float margin = 0.f) {
+    // GameObjectType::Solid includes the ground. Only accept a solid when its
+    // rectangle rises into the player's body; a floor whose top touches the
+    // player's feet is explicitly ignored.
+    bool raisedSolid(GameObject* o, const cocos2d::CCRect& r,
+                     const cocos2d::CCRect& p) {
+        if (!o || o->m_objectType != GameObjectType::Solid || o->m_isDisabled2)
+            return false;
+
+        const float h = std::max(p.size.height, 1.f);
+        const float riseAboveFeet = r.getMaxY() - p.getMinY();
+
+        if (riseAboveFeet <= std::max(kGroundTolerance, h * 0.22f))
+            return false; // floor/platform below the player's feet
+
+        if (r.getMinY() >= p.getMaxY() - kGroundTolerance)
+            return false; // ceiling well above the player's head
+
+        return riseAboveFeet > h * 0.28f;
+    }
+
+    bool verticalOverlap(const cocos2d::CCRect& a,
+                         const cocos2d::CCRect& b, float margin = 0.f) {
         return a.getMaxY() >= b.getMinY() - margin
             && b.getMaxY() >= a.getMinY() - margin;
     }
 
-    bool horizontalOverlap(const cocos2d::CCRect& a, const cocos2d::CCRect& b, float margin = 0.f) {
-        return a.getMaxX() >= b.getMinX() - margin
-            && b.getMaxX() >= a.getMinX() - margin;
+    cocos2d::CCRect offsetRect(cocos2d::CCRect r, float dx, float dy) {
+        r.origin.x += dx;
+        r.origin.y += dy;
+        return r;
     }
 
-    cocos2d::CCRect shiftedRect(cocos2d::CCRect rect, float dx, float dy) {
-        rect.origin.x += dx;
-        rect.origin.y += dy;
-        return rect;
+    float centerY(const cocos2d::CCRect& r) {
+        return r.getMinY() + r.size.height * 0.5f;
     }
 
-    float rectCenterY(const cocos2d::CCRect& rect) {
-        return rect.getMinY() + rect.size.height * 0.5f;
+    float centerX(const cocos2d::CCRect& r) {
+        return r.getMinX() + r.size.width * 0.5f;
     }
 
-    float forwardGap(const cocos2d::CCRect& player, const cocos2d::CCRect& object, float direction) {
-        // Correct for reverse portals as well as normal left-to-right movement.
-        if (direction >= 0.f) return object.getMinX() - player.getMaxX();
-        return player.getMinX() - object.getMaxX();
+    float gapTo(const cocos2d::CCRect& p,
+                const cocos2d::CCRect& o, float dir) {
+        return dir >= 0.f ? o.getMinX() - p.getMaxX()
+                          : p.getMinX() - o.getMaxX();
+    }
+
+    bool grounded(PlayerObject* p) {
+        return p && (p->m_isOnGround || p->m_isOnGround2);
     }
 }
 
 class $modify(GigaDashBotPlayLayer, PlayLayer) {
     struct Fields {
-        float jumpCooldown = 0.f;
+        float cooldown = 0.f;
         float debugCooldown = 0.f;
+        float lastJumpedX = -100000.f;
         bool releaseJumpNextFrame = false;
-        bool directionalButtonHeld = false;
-        GameObject* lastTarget = nullptr;
-        int lastTargetID = -1;
-        float lastGap = 0.f;
-        float lastTtc = 0.f;
-        const char* lastDecision = "WAIT";
+        bool directionalHeld = false;
+        bool platformerRightHeld = false;
+        int targetID = -1;
+        float targetGap = 0.f;
+        float targetTtc = 0.f;
+        const char* decision = "WAIT";
     };
 
-    void releaseController(PlayerObject* player) {
-        if (!player) return;
-        player->releaseButton(PlayerButton::Jump);
-        player->releaseButton(PlayerButton::Right);
-        player->releaseButton(PlayerButton::Left);
+    void releaseBotInputs(PlayerObject* p) {
+        if (!p) return;
+        p->releaseButton(PlayerButton::Jump);
+        p->releaseButton(PlayerButton::Right);
+        p->releaseButton(PlayerButton::Left);
         m_fields->releaseJumpNextFrame = false;
-        m_fields->directionalButtonHeld = false;
+        m_fields->directionalHeld = false;
+        m_fields->platformerRightHeld = false;
     }
 
     void postUpdate(float dt) {
         PlayLayer::postUpdate(dt);
 
         auto mod = Mod::get();
-        auto* player = m_player1;
+        auto* p = m_player1;
 
         if (!mod->getSettingValue<bool>("auto-play")) {
-            if (player && (m_fields->releaseJumpNextFrame || m_fields->directionalButtonHeld)) {
-                releaseController(player);
-            }
+            if (p && (m_fields->releaseJumpNextFrame
+                || m_fields->directionalHeld
+                || m_fields->platformerRightHeld))
+                releaseBotInputs(p);
             return;
         }
 
-        if (!player || m_isPaused || player->m_isDead) return;
+        if (!p) return;
+        if (m_isPaused || p->m_isDead) {
+            releaseBotInputs(p);
+            return;
+        }
 
-        // Release a tap on the next physics frame, so each press is a clean input edge.
+        // Convert one-frame tap into a clean press/release edge.
         if (m_fields->releaseJumpNextFrame) {
-            player->releaseButton(PlayerButton::Jump);
+            p->releaseButton(PlayerButton::Jump);
             m_fields->releaseJumpNextFrame = false;
         }
 
-        m_fields->jumpCooldown = std::max(0.f, m_fields->jumpCooldown - dt);
+        m_fields->cooldown = std::max(0.f, m_fields->cooldown - dt);
         m_fields->debugCooldown = std::max(0.f, m_fields->debugCooldown - dt);
 
-        const bool platformer = player->m_isPlatformer;
-        const auto mode = detectMode(player);
-        const bool directional = isDirectionalMode(mode);
-        const float leadSeconds = static_cast<float>(
-            mod->getSettingValue<int64_t>("jump-lead-ms")
-        ) / 1000.f;
+        const bool platformer = p->m_isPlatformer;
+        const Mode mode = detectMode(p);
+        const bool directional = !platformer && directionalMode(mode);
+        const float lead = static_cast<float>(
+            mod->getSettingValue<int64_t>("jump-lead-ms")) / 1000.f;
 
-        // Platformer requires horizontal movement; hold Right while the bot is enabled.
-        if (platformer && !player->buttonDown(PlayerButton::Right)) {
-            player->pushButton(PlayerButton::Right);
+        if (platformer && !m_fields->platformerRightHeld) {
+            p->pushButton(PlayerButton::Right);
+            m_fields->platformerRightHeld = true;
         }
 
-        const cocos2d::CCRect playerRect = player->getObjectRect();
-        const float playerXVelocity = static_cast<float>(player->getCurrentXVelocity());
-        const float direction = playerXVelocity < -1.f ? -1.f : 1.f;
-        const float speed = std::max(std::abs(playerXVelocity), platformer ? 120.f : kMinClosingSpeed);
-        const float playerYVelocity = static_cast<float>(player->getYVelocity());
-        const float playerCenterY = rectCenterY(playerRect);
+        const cocos2d::CCRect playerRect = p->getObjectRect();
+        const float vx = static_cast<float>(p->getCurrentXVelocity());
+        const float dir = vx < -1.f ? -1.f : 1.f;
+        const float speed = std::max(std::abs(vx), platformer ? 120.f : kMinSpeed);
+        const float vy = static_cast<float>(p->getYVelocity());
+        const float playerY = centerY(playerRect);
 
-        Candidate best{};
-        float bestTtc = 999.f;
+        // Re-arm only after the player has actually passed the previous spike cluster.
+        if (dir > 0.f && playerRect.getMinX() > m_fields->lastJumpedX + kHazardCluster)
+            m_fields->lastJumpedX = -100000.f;
+        else if (dir < 0.f && playerRect.getMaxX() < m_fields->lastJumpedX - kHazardCluster)
+            m_fields->lastJumpedX = -100000.f;
 
-        // This is a cheap native-object scan performed each game update (usually ~60 Hz),
-        // so decisions are refreshed at least every 0.1 seconds without a separate AI thread.
+        Target best{};
+        const float lookAhead = directional
+            ? kDirectionalLookAhead
+            : std::min(kMaxLookAhead, lead + 0.36f);
+
+        // Fast native object scan runs once per game update (usually ~60 Hz).
         geode::cocos::CCArrayExt<GameObject*> objects = m_objects;
         for (auto* object : objects) {
-            if (!isCollisionObject(object) || object == player) continue;
+            if (!object || object == p || object->m_isDisabled2) continue;
 
+            const bool isHazard = hazardObject(object);
             const cocos2d::CCRect objectRect = object->getObjectRect();
-            float gap = forwardGap(playerRect, objectRect, direction);
 
-            // Ignore objects already behind the player's rear edge.
-            if (gap < -playerRect.size.width * 0.85f) continue;
+            if (!isHazard && !raisedSolid(object, objectRect, playerRect))
+                continue;
 
-            const float relativeSpeed = std::max(speed, kMinClosingSpeed);
-            const float ttc = std::max(0.f, gap) / relativeSpeed;
-            if (ttc > (directional ? kDirectionalLookAhead : leadSeconds + 0.16f)) continue;
+            const float gap = gapTo(playerRect, objectRect, dir);
+            if (gap < -playerRect.size.width * 0.7f) continue;
 
-            // For directional modes, predict the current vertical path to the object's X.
-            // For jump modes, require intersection with the player's current standing lane.
-            const float projectedY = playerCenterY + playerYVelocity * ttc;
-            const float dy = directional ? projectedY - playerCenterY : 0.f;
-            const cocos2d::CCRect projectedPlayer = shiftedRect(playerRect, 0.f, dy);
+            const float ttc = std::max(0.f, gap) / speed;
+            if (ttc > lookAhead) continue;
 
-            // A block/spike clearly above the head (or below the feet) is not a jump target.
-            // In directional flight modes, only react when the projected path intersects it.
-            const bool collisionPath = directional
-                ? verticalOverlap(projectedPlayer, objectRect, kRectSafety)
-                : verticalOverlap(playerRect, objectRect, kRectSafety);
+            const float predictedY = playerY + vy * ttc;
+            const auto predictedPlayer = offsetRect(
+                playerRect, dir * speed * ttc,
+                directional ? predictedY - playerY : 0.f
+            );
 
-            if (!collisionPath) continue;
+            // Ground modes must intersect the player's current lane. Flight modes
+            // use the predicted vertical lane at the estimated crossing time.
+            const bool intersectsPath = directional
+                ? verticalOverlap(predictedPlayer, objectRect, 1.f)
+                : verticalOverlap(playerRect, objectRect, 0.f);
+            if (!intersectsPath) continue;
 
-            const bool xPath = directional
-                ? (gap <= speed * kDirectionalLookAhead + objectRect.size.width)
-                : (gap <= speed * (leadSeconds + 0.05f) + objectRect.size.width);
-            if (!xPath) continue;
-
-            if (ttc < bestTtc) {
-                bestTtc = ttc;
+            if (!best.object || ttc < best.ttc) {
                 best.object = object;
                 best.rect = objectRect;
                 best.gap = gap;
-                best.timeToContact = ttc;
-                best.predictedPlayerY = projectedY;
-                best.projectedCollision = true;
+                best.ttc = ttc;
+                best.predictedY = predictedY;
             }
         }
 
-        m_fields->lastTarget = best.object;
-        m_fields->lastTargetID = best.object ? best.object->m_objectID : -1;
-        m_fields->lastGap = best.object ? best.gap : 0.f;
-        m_fields->lastTtc = best.object ? best.timeToContact : 0.f;
-        m_fields->lastDecision = best.object ? "TARGET" : "CLEAR";
+        m_fields->targetID = best.object ? best.object->m_objectID : -1;
+        m_fields->targetGap = best.object ? best.gap : 0.f;
+        m_fields->targetTtc = best.object ? best.ttc : 0.f;
+        m_fields->decision = best.object ? "TRACK" : "CLEAR";
 
         if (!best.object) {
-            if (directional && m_fields->directionalButtonHeld) {
-                // No near collision on the projected path: release thrust and coast.
-                player->releaseButton(PlayerButton::Jump);
-                m_fields->directionalButtonHeld = false;
+            if (directional && m_fields->directionalHeld) {
+                p->releaseButton(PlayerButton::Jump);
+                m_fields->directionalHeld = false;
             }
             return;
         }
 
         if (directional) {
-            // Ship/Wave/Swing: choose the vertical direction opposite the obstacle.
-            // This remains an approximate controller; each of these modes has different physics.
-            const float obstacleY = rectCenterY(best.rect);
-            const bool needMoveUp = obstacleY > best.predictedPlayerY;
-            const bool pressUp = player->m_isUpsideDown ? !needMoveUp : needMoveUp;
-            if (pressUp && !m_fields->directionalButtonHeld) {
-                player->pushButton(PlayerButton::Jump);
-                m_fields->directionalButtonHeld = true;
-                m_fields->lastDecision = "STEER UP";
-            }
-            else if (!pressUp && m_fields->directionalButtonHeld) {
-                player->releaseButton(PlayerButton::Jump);
-                m_fields->directionalButtonHeld = false;
-                m_fields->lastDecision = "STEER DOWN";
-            }
-        }
-        else {
-            // Ground-based modes: only jump if the collision rectangle intersects
-            // the player's standing lane and the object is inside the short launch window.
-            const bool canJumpFromGround =
-                player->m_isOnGround && !player->m_isOnSlope;
+            // Steer away from the obstacle's vertical side; this is intentionally
+            // conservative rather than toggling the button for every nearby object.
+            const bool obstacleAbove = centerY(best.rect) >= best.predictedY;
+            bool pressUp = !obstacleAbove;
+            if (p->m_isUpsideDown) pressUp = !pressUp;
 
-            // UFO may tap again in the air, but only if its projected path intersects a target.
-            const bool canAirTap = mode == PlayerMode::UFO;
-            const bool inLaunchWindow =
-                best.timeToContact <= leadSeconds
-                && best.gap <= speed * leadSeconds + 1.f;
+            if (pressUp && !m_fields->directionalHeld) {
+                p->pushButton(PlayerButton::Jump);
+                m_fields->directionalHeld = true;
+                m_fields->decision = "STEER UP";
+            } else if (!pressUp && m_fields->directionalHeld) {
+                p->releaseButton(PlayerButton::Jump);
+                m_fields->directionalHeld = false;
+                m_fields->decision = "STEER DOWN";
+            }
+        } else {
+            const bool canJumpNow = grounded(p) && !p->m_isOnSlope;
+            const bool canUfoAirTap = mode == Mode::UFO && !platformer;
+            const bool inJumpWindow = best.ttc <= lead;
 
-            if ((canJumpFromGround || canAirTap) && inLaunchWindow && m_fields->jumpCooldown <= 0.f) {
-                player->pushButton(PlayerButton::Jump);
+            const float targetX = centerX(best.rect);
+            const bool sameCluster =
+                std::abs(targetX - m_fields->lastJumpedX) < kHazardCluster;
+
+            if (inJumpWindow && (canJumpNow || canUfoAirTap)
+                && !sameCluster && m_fields->cooldown <= 0.f) {
+                p->pushButton(PlayerButton::Jump);
                 m_fields->releaseJumpNextFrame = true;
-                m_fields->jumpCooldown = kTapCooldown;
-                m_fields->lastDecision = "JUMP";
+                m_fields->cooldown = kTapCooldown;
+                m_fields->lastJumpedX = targetX;
+                m_fields->decision = "JUMP";
             }
         }
 
         if (mod->getSettingValue<bool>("show-debug-log") && m_fields->debugCooldown <= 0.f) {
-            log::info(
-                "GIGA BOT: mode={}, object={}, gap={:.1f}, ttc={:.3f}s, decision={}",
-                modeName(mode, platformer),
-                m_fields->lastTargetID,
-                m_fields->lastGap,
-                m_fields->lastTtc,
-                m_fields->lastDecision
-            );
+            log::info("GIGA BOT: mode={}, object={}, gap={:.1f}, ttc={:.3f}s, grounded={}, action={}",
+                modeName(mode, platformer), m_fields->targetID, m_fields->targetGap,
+                m_fields->targetTtc, grounded(p), m_fields->decision);
             m_fields->debugCooldown = 0.25f;
         }
     }
 
     void onQuit() {
-        releaseController(m_player1);
+        releaseBotInputs(m_player1);
         PlayLayer::onQuit();
     }
 };
