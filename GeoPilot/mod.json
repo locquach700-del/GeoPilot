@@ -1,23 +1,19 @@
 {
-  "geode": "v5.10.1",
+  "geode": "v5.11.2",
   "gd": {
-    "win": "2.2081",
-    "mac": "2.2081",
-    "android": "2.2081",
-    "ios": "2.2081"
+    "win": "2.2081"
   },
-  "id": "noob.geopilot",
-  "name": "GeoPilot Auto Play",
-  "version": "v0.1.0",
-  "developer": "Noob",
-  "description": "Experimental obstacle-aware auto-play controller with configurable in-game settings.",
-  "repository": "https://github.com/geode-sdk/geode",
+  "id": "giga.dash.bot",
+  "name": "GIGA DASH BOT",
+  "version": "v1.0.0",
+  "developer": "GIGA",
+  "description": "Experimental object-aware auto-play mod for Geometry Dash 2.2081. Practice/offline use.",
   "tags": ["gameplay", "offline", "utility"],
   "settings": {
     "controller-title": {
       "type": "title",
-      "name": "GeoPilot Controller",
-      "description": "Configure the experimental automatic controller. Open this mod's settings from the Geode menu."
+      "name": "GIGA DASH BOT",
+      "description": "Experimental obstacle-aware controller. Practice mode is recommended."
     },
     "auto-play": {
       "type": "bool",
@@ -28,7 +24,7 @@
     "control-mode": {
       "type": "string",
       "name": "Game Mode",
-      "description": "Auto reads the current player mode. Manual values override mode detection.",
+      "description": "Auto detects the current player mode. Manual values override mode detection.",
       "default": "Auto",
       "one-of": ["Auto", "Cube", "Ship", "Ball", "UFO", "Wave", "Robot", "Spider", "Swing"]
     },
