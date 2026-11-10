@@ -1,34 +1,36 @@
-# GIGA DASH BOT — Geometry Dash 2.2081
+# GIGA DASH BOT v1.1 — Geometry Dash 2.2081
 
-**Native Geode mod for Windows, targeting Geometry Dash 2.2081 and Geode 5.11.2.**
+Target: **Windows x64 · Geometry Dash 2.2081 · Geode 5.11.2**.
 
-## Download the built mod
+## Download
 
-1. Open the repository **Actions** tab.
-2. Select **GIGA DASH BOT — Windows Build**.
-3. Open the latest run with a green **Success** status.
-4. Download the artifact **GIGA-DASH-BOT-Windows-GD-2.2081** at the bottom of the run page.
-5. Extract the ZIP and install the `.geode` file using Geode (or copy it to `%LOCALAPPDATA%\GeometryDash\geode\mods\`).
+Open [GitHub Actions](https://github.com/locquach700-del/GeoPilot/actions), select the latest **GIGA DASH BOT — Windows Build** run, and download the artifact `GIGA-DASH-BOT-Windows-GD-2.2081` after a successful build.
 
-Every push to the `GeoPilot/` source folder automatically starts a new Windows build.
+## What changed in v1.1
 
-## In-game settings
+- Replaced the old hard-coded ID list with native `GameObjectType::Hazard`, `AnimatedHazard` and `Solid` types.
+- Uses `GameObject::getObjectRect()` and `PlayerObject::getObjectRect()` for collision-lane checks.
+- Ignores objects clearly above the player's head or below the player's feet for ground-jump decisions.
+- Calculates distance from the player's leading hitbox edge to the obstacle and estimates time-to-contact from current horizontal speed.
+- Default jump lead reduced to 95 ms and can be adjusted in the Geode mod settings.
+- Scans the level's object array on each game update (normally 60 updates/second), so the cheap path check refreshes more often than once every 0.1 seconds.
+- Detects Cube, Ship, Ball, UFO, Wave, Robot, Spider, Swing and Platformer state from live player fields.
+- Platformer mode holds Right automatically. Ship/Wave/Swing use a simple projected-lane steering heuristic.
 
-Open the Geode menu, select **GIGA DASH BOT**, then open its settings:
+## Why the old version jumped too early
+
+The old code treated IDs 90–97 and 133–140 as hazards even though several are normal square/decorative objects, an exclamation decoration, a rod, wheels and jump objects. That made the bot react to things that were not dangerous. The new version asks the game's native object-type field whether an object is a hazard or solid, then checks collision rectangles before acting.
+
+## Tuning
+
+Open Geode → GIGA DASH BOT → Settings:
 
 - **Enable Auto Play** — off by default.
-- **Game Mode** — Auto or a manual player-mode override.
-- **Reaction Distance** — how early the heuristic reacts to recognized obstacles.
-- **Debug Log** — writes controller decisions to the Geode log.
+- **Jump timing (ms)** — start at 95 ms. Reduce toward 70–80 ms if it still jumps too early; raise it if it hits the obstacle before jumping.
+- **Debug Log** — prints mode, target object ID, hitbox gap, time-to-contact and decision.
 
-Practice mode is recommended when testing.
+Use Practice mode while testing.
 
-## What it does
+## Important limitations
 
-The mod scans the current PlayLayer's object list, checks a limited list of common spike/saw hazard IDs and reacts based on the nearest recognized object's position. It has direct access to game object data through Geode; it does not guess hazards from screen pixels.
-
-## Limitations
-
-This is an **experimental heuristic**, not a trained AI or a guaranteed level solver. Custom objects, moving triggers, hitboxes, orb timing, dual mode, complex speed/gravity changes and many Ship/Wave corridors need a more complete physics simulator and pathfinder. The current logic may fail on many levels and modes. It is not advertised as capable of beating every level.
-
-The mod is intended for personal Practice/offline testing. It does not attack Geometry Dash servers, edit other players' levels, or modify account data.
+This is a lightweight predictive prototype, not a fully trained AI or a verified TAS solver. It is more selective than v1.0, but the Ship/Wave/Swing controls still use simplified steering, and Robot/UFO/Spider/Ball have mode-specific physics that need additional trajectory simulation. It will not reliably beat every custom level, trigger sequence, dual section or complex Platformer map. The 95 ms setting is a starting point, not a universal timing value.

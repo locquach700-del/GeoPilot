@@ -5,9 +5,9 @@
   },
   "id": "giga.dash.bot",
   "name": "GIGA DASH BOT",
-  "version": "v1.0.0",
+  "version": "v1.1.0",
   "developer": "GIGA",
-  "description": "Experimental object-aware auto-play mod for Geometry Dash 2.2081. Practice/offline use.",
+  "description": "Predictive object-aware auto-play prototype for Geometry Dash 2.2081.",
   "tags": [
     "gameplay",
     "offline",
@@ -16,38 +16,21 @@
   "settings": {
     "controller-title": {
       "type": "title",
-      "name": "GIGA DASH BOT",
-      "description": "Experimental obstacle-aware controller. Practice mode is recommended."
+      "name": "GIGA DASH BOT v1.1",
+      "description": "Reads native collision objects and predicts the player's path. Practice mode recommended."
     },
     "auto-play": {
       "type": "bool",
       "name": "Enable Auto Play",
-      "description": "Automatically react to recognized hazards during a level. Disabled by default.",
+      "description": "Automatically react to native hitbox objects. Disabled by default.",
       "default": false
     },
-    "control-mode": {
-      "type": "string",
-      "name": "Game Mode",
-      "description": "Auto detects the current player mode. Manual values override mode detection.",
-      "default": "Auto",
-      "one-of": [
-        "Auto",
-        "Cube",
-        "Ship",
-        "Ball",
-        "UFO",
-        "Wave",
-        "Robot",
-        "Spider",
-        "Swing"
-      ]
-    },
-    "reaction-distance": {
+    "jump-lead-ms": {
       "type": "int",
-      "name": "Reaction Distance",
-      "description": "Horizontal distance in game units for the hazard heuristic. Larger values react earlier.",
-      "default": 85,
-      "min": 35,
+      "name": "Jump timing (ms)",
+      "description": "Lead time before predicted contact. Lower values jump later. Default is 95 ms.",
+      "default": 95,
+      "min": 45,
       "max": 180,
       "control": {
         "slider": true,
@@ -58,7 +41,7 @@
     "show-debug-log": {
       "type": "bool",
       "name": "Debug Log",
-      "description": "Log controller decisions to the Geode log.",
+      "description": "Logs detected object type, distance, time-to-contact and action.",
       "default": false
     }
   }
